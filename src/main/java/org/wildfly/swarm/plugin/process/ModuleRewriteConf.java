@@ -18,6 +18,9 @@ package org.wildfly.swarm.plugin.process;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -37,6 +40,12 @@ public class ModuleRewriteConf {
                 load(file);
             }
             baseDir = baseDir.getParent();
+        }
+
+        try (InputStream globalRewrites = ModuleRewriteConf.class.getResourceAsStream("/global-module-rewrite.conf")) {
+            if (globalRewrites != null) {
+                load(new BufferedReader(new InputStreamReader(globalRewrites, StandardCharsets.UTF_8)));
+            }
         }
     }
 
@@ -66,95 +75,98 @@ public class ModuleRewriteConf {
 
     private void load(Path file) throws IOException {
         try (BufferedReader in = new BufferedReader(new FileReader(file.toFile()))) {
+            load(in);
+        }
+    }
 
-            ModuleRewriteRules current = null;
+    private void load(BufferedReader in) throws IOException {
+        ModuleRewriteRules current = null;
 
-            String line;
+        String line;
 
-            int lineNumber = 0;
+        int lineNumber = 0;
 
-            while ((line = in.readLine()) != null) {
-                ++lineNumber;
-                line = line.trim();
-                if (line.isEmpty()) {
-                    continue;
+        while ((line = in.readLine()) != null) {
+            ++lineNumber;
+            line = line.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            if (line.startsWith(REPLACE)) {
+                String[] chunks = line.substring(REPLACE.length()).trim().split(">");
+
+                String origName = null;
+                String origSlot = MAIN;
+
+                String[] origParts = chunks[0].trim().split(":");
+                origName = origParts[0];
+                if (origParts.length > 1) {
+                    origSlot = origParts[1];
                 }
-                if (line.startsWith(REPLACE)) {
-                    String[] chunks = line.substring(REPLACE.length()).trim().split(">");
 
-                    String origName = null;
-                    String origSlot = MAIN;
+                String replaceName = null;
+                String replaceSlot = MAIN;
 
-                    String[] origParts = chunks[0].trim().split(":");
-                    origName = origParts[0];
-                    if (origParts.length > 1) {
-                        origSlot = origParts[1];
-                    }
-
-                    String replaceName = null;
-                    String replaceSlot = MAIN;
-
-                    String[] replaceParts = chunks[1].trim().split(":");
-                    replaceName = replaceParts[0];
-                    if (replaceParts.length > 1) {
-                        replaceSlot = replaceParts[1];
-                    }
-
-                    current.replace(origName, origSlot, replaceName, replaceSlot);
-                } else if (line.startsWith(OPTIONAL)) {
-                    String name = null;
-                    String slot = MAIN;
-
-                    String[] parts = line.substring(OPTIONAL.length()).trim().split(":");
-                    name = parts[0];
-                    if (parts.length > 1) {
-                        slot = parts[1];
-                    }
-
-                    current.makeOptional(name, slot);
-                } else if (line.startsWith(MODULE)) {
-                    String name = null;
-                    String slot = MAIN;
-
-                    String[] parts = line.substring(MODULE.length()).trim().split(":");
-                    name = parts[0];
-                    if (parts.length > 1) {
-                        slot = parts[1];
-                    }
-
-                    current = rules.get(name + ":" + slot);
-                    if (current == null) {
-                        current = new ModuleRewriteRules();
-                        this.rules.put(name + ":" + slot, current);
-                    }
-                } else if (line.startsWith(INCLUDE)) {
-                    String name = null;
-                    String slot = null;
-
-                    String[] parts = line.substring(INCLUDE.length()).trim().split(":");
-                    name = parts[0];
-                    if (parts.length > 1) {
-                        slot = parts[1];
-                    }
-
-                    current.include(name, slot);
-                } else if (line.startsWith(EXPORT)) {
-                    String name = null;
-                    String slot = null;
-
-                    String[] parts = line.substring(EXPORT.length()).trim().split(":");
-                    name = parts[0];
-                    if (parts.length > 1) {
-                        slot = parts[1];
-                    }
-
-                    current.export(name, slot);
-                } else if (line.startsWith(REMOVE_ARTIFACT)) {
-                    String pattern = line.substring(REMOVE_ARTIFACT.length()).trim();
-                    current.removeArtifact(pattern);
-                } else {
-                    System.err.println(lineNumber + ":Lines should be blank or start with " + MODULE + ", " + INCLUDE + ", " + EXPORT + " or " + OPTIONAL + " - " + line);
+                String[] replaceParts = chunks[1].trim().split(":");
+                replaceName = replaceParts[0];
+                if (replaceParts.length > 1) {
+                    replaceSlot = replaceParts[1];
                 }
+
+                current.replace(origName, origSlot, replaceName, replaceSlot);
+            } else if (line.startsWith(OPTIONAL)) {
+                String name = null;
+                String slot = MAIN;
+
+                String[] parts = line.substring(OPTIONAL.length()).trim().split(":");
+                name = parts[0];
+                if (parts.length > 1) {
+                    slot = parts[1];
+                }
+
+                current.makeOptional(name, slot);
+            } else if (line.startsWith(MODULE)) {
+                String name = null;
+                String slot = MAIN;
+
+                String[] parts = line.substring(MODULE.length()).trim().split(":");
+                name = parts[0];
+                if (parts.length > 1) {
+                    slot = parts[1];
+                }
+
+                current = rules.get(name + ":" + slot);
+                if (current == null) {
+                    current = new ModuleRewriteRules();
+                    this.rules.put(name + ":" + slot, current);
+                }
+            } else if (line.startsWith(INCLUDE)) {
+                String name = null;
+                String slot = null;
+
+                String[] parts = line.substring(INCLUDE.length()).trim().split(":");
+                name = parts[0];
+                if (parts.length > 1) {
+                    slot = parts[1];
+                }
+
+                current.include(name, slot);
+            } else if (line.startsWith(EXPORT)) {
+                String name = null;
+                String slot = null;
+
+                String[] parts = line.substring(EXPORT.length()).trim().split(":");
+                name = parts[0];
+                if (parts.length > 1) {
+                    slot = parts[1];
+                }
+
+                current.export(name, slot);
+            } else if (line.startsWith(REMOVE_ARTIFACT)) {
+                String pattern = line.substring(REMOVE_ARTIFACT.length()).trim();
+                current.removeArtifact(pattern);
+            } else {
+                System.err.println(lineNumber + ": Lines should be blank or start with " + MODULE + ", " + INCLUDE + ", " + EXPORT + " or " + OPTIONAL + " - " + line);
             }
         }
     }
